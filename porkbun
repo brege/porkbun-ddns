@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# porkbun dynamic DNS update
+SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+CONFIG_FILE="$SCRIPT_DIR/config.ini"
+while getopts "c:" opt; do
+    case $opt in
+        c) CONFIG_FILE="$OPTARG" ;;
+    esac
+done
+
+source "$CONFIG_FILE"
+LOG_FILE="$data_dir/porkbun.log"
+
+# log file header
+echo "# Porkbun Dynamic DNS Log: $0" >> "$LOG_FILE"
+
+# get current IP
+CURRENT_IP=$(curl -s https://api.ipify.org)
+if [ -z "$CURRENT_IP" ]; then
+    echo "$(date): Failed to get current IP" >&2
+    exit 1
+fi
+
+{
+echo "$(date): Current IP is $CURRENT_IP"
+
+# get current DNS records
+records=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/retrieve/$domain" \
+    -H "Content-Type: application/json" \
+    -d "{\"apikey\":\"$dns_porkbun_key\",\"secretapikey\":\"$dns_porkbun_secret\"}")
+
+# update A records with current IP if necessary
+records_updated=0
+records_already_correct=0
+
+echo "$records" | grep -o '"id":"[0-9]*","name":"[^"]*","type":"A","content":"[^"]*"' | while IFS= read -r line; do
+    record_id=$(echo "$line" | sed 's/.*"id":"\([0-9]*\)".*/\1/')
+    record_name=$(echo "$line" | sed 's/.*"name":"\([^"]*\)".*/\1/')
+    record_ip=$(echo "$line" | sed 's/.*"content":"\([^"]*\)".*/\1/')
+
+    if [ "$record_ip" != "$CURRENT_IP" ]; then
+        # Update this record to point to current IP
+        update_response=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/edit/$domain/$record_id" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"apikey\": \"$dns_porkbun_key\",
+                \"secretapikey\": \"$dns_porkbun_secret\",
+                \"type\": \"A\",
+                \"content\": \"$CURRENT_IP\",
+                \"ttl\": \"600\"
+            }")
+        echo "$(date): Updated A record $record_name from $record_ip to $CURRENT_IP (ID: $record_id)"
+        records_updated=$((records_updated + 1))
+    else
+        echo "$(date): A record $record_name already correct at $CURRENT_IP"
+        records_already_correct=$((records_already_correct + 1))
+    fi
+done
+
+if [ "$records_updated" -eq 0 ] && [ "$records_already_correct" -gt 0 ]; then
+    echo "$(date): All DNS records already correct"
+elif [ "$records_updated" -gt 0 ]; then
+    echo "$(date): Updated $records_updated A record(s)"
+fi
+
+echo "$(date): DNS update completed"
+
+# ensure proper ownership of log file
+DATA_DIR_OWNER=$(stat -c '%U:%G' "$data_dir" 2>/dev/null)
+if [ -n "$DATA_DIR_OWNER" ]; then
+    chown "$DATA_DIR_OWNER" "$LOG_FILE" 2>/dev/null || true
+fi
+} >> "$LOG_FILE"
