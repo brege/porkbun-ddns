@@ -3,6 +3,8 @@ porkbun-ddns
 
 A simple DDNS client for porkbun.com_
 
+    I just want the **A** records for **\*.my-domain.xyz** and **my-domain.xyz** to justwerk™.
+
 .. _porkbun.com: https://porkbun.com
 
 Setup
@@ -54,6 +56,13 @@ and change the ``dns_porkbun_credentials =`` entry.
 
 .. _Let's Encrypt: https://letsencrypt.org
 
+
+Notes
+-----
+
+- The script explicitly filters Porkbun’s response down to ``"type":"A"`` entries 
+  so everything else (MX, TXT, CNAME, SRV, etc.) is ignored. 
+- This scripts' only objective is to ensure your domain and its subdomains are reachable from the internet.
 
 Licence
 -------

@@ -41,17 +41,50 @@ echo "$records" | grep -o '"id":"[0-9]*","name":"[^"]*","type":"A","content":"[^
 
     if [ "$record_ip" != "$CURRENT_IP" ]; then
         # Update this record to point to current IP
+        # Porkbun expects the host portion for subdomains and no name field for the apex.
+        if [ "$record_name" = "$domain" ]; then
+            include_name_field=false
+        else
+            include_name_field=true
+            record_host="$record_name"
+            if [[ "$record_host" == *".$domain" ]]; then
+                record_host="${record_host%.$domain}"
+            fi
+        fi
+
+        if [ "$include_name_field" = true ]; then
+            update_payload=$(cat <<EOF
+{
+    "apikey": "$dns_porkbun_key",
+    "secretapikey": "$dns_porkbun_secret",
+    "type": "A",
+    "name": "$record_host",
+    "content": "$CURRENT_IP",
+    "ttl": "600"
+}
+EOF
+)
+        else
+            update_payload=$(cat <<EOF
+{
+    "apikey": "$dns_porkbun_key",
+    "secretapikey": "$dns_porkbun_secret",
+    "type": "A",
+    "content": "$CURRENT_IP",
+    "ttl": "600"
+}
+EOF
+)
+        fi
         update_response=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/edit/$domain/$record_id" \
             -H "Content-Type: application/json" \
-            -d "{
-                \"apikey\": \"$dns_porkbun_key\",
-                \"secretapikey\": \"$dns_porkbun_secret\",
-                \"type\": \"A\",
-                \"content\": \"$CURRENT_IP\",
-                \"ttl\": \"600\"
-            }")
-        echo "$(date): Updated A record $record_name from $record_ip to $CURRENT_IP (ID: $record_id)"
-        records_updated=$((records_updated + 1))
+            -d "$update_payload")
+        if echo "$update_response" | grep -q '"status":"SUCCESS"'; then
+            echo "$(date): Updated A record $record_name from $record_ip to $CURRENT_IP (ID: $record_id)"
+            records_updated=$((records_updated + 1))
+        else
+            echo "$(date): Failed to update A record $record_name (ID: $record_id): $update_response"
+        fi
     else
         echo "$(date): A record $record_name already correct at $CURRENT_IP"
         records_already_correct=$((records_already_correct + 1))
