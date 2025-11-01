@@ -10,29 +10,34 @@ A simple DDNS client for porkbun.com_
 Setup
 -----
 
-Clone the repo.
+Install the script.
 
 .. code-block:: bash
 
-    sudo mkdir -p /opt/porkbun-ddns
-    sudo chown -R user:user /opt/porkbun-ddns
-    cd /opt/porkbun-ddns && mkdir /opt/porkbun-ddns/logs
-    git clone https://github.com/brege/porkbun-ddns.git .
+    git clone https://github.com/brege/porkbun-ddns.git
+    cd porkbun-ddns
+    sudo install -m 755 porkbun /usr/local/bin/porkbun-ddns
 
 Create a config file.
 
+.. code-block:: bash
+
+    sudo mkdir -p /etc/porkbun-ddns
+    sudo mkdir -p /var/lib/porkbun-ddns
+
 .. code-block:: ini
 
+    # /etc/porkbun-ddns/config.ini
     dns_porkbun_key=pk1_****
     dns_porkbun_secret=sk1_****
     domain=example.com
-    data_dir=/opt/porkbun-ddns/logs/
+    data_dir=/var/lib/porkbun-ddns
 
 Install as a systemd timer to runs at a 5 minute interval and updates the A records on porkbun.com_.
 
 .. code-block:: bash
 
-    sudo cp porkbun-ddns.* /etc/systemd/system/
+    sudo cp systemd/porkbun-ddns.* /etc/systemd/system/
     sudo systemctl daemon-reload
     sudo systemctl enable --now porkbun-ddns.timer
 
@@ -44,7 +49,7 @@ If you use certbot_ from `Let's Encrypt`_, you can use the same config for your 
 .. code-block:: bash
 
     sudo certbot certonly --authenticator dns-porkbun \
-      --dns-porkbun-credentials /opt/porkbun-ddns/config.ini \
+      --dns-porkbun-credentials /etc/porkbun-ddns/config.ini \
       --dns-porkbun-propagation-seconds 30 \
       -d example.com -d "*.example.com"
 
@@ -60,9 +65,10 @@ and change the ``dns_porkbun_credentials =`` entry.
 Notes
 -----
 
-- The script explicitly filters Porkbun’s response down to ``"type":"A"`` entries 
-  so everything else (MX, TXT, CNAME, SRV, etc.) is ignored. 
-- This scripts' only objective is to ensure your domain and its subdomains are reachable from the internet.
+- The script explicitly filters Porkbun’s response down to ``"type":"A"``
+  entries. Everything else (MX, TXT, CNAME, SRV, etc.) is ignored. 
+- This scripts' only objective is to ensure your domain and its subdomains are
+  always reachable from the internet.
 
 Licence
 -------
