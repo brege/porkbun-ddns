@@ -11,19 +11,52 @@ done
 
 source "$CONFIG_FILE"
 LOG_FILE="$data_dir/porkbun.log"
+DEFAULT_CTX="${domain:-porkbun-ddns}"
+LOG_TAG="${LOG_TAG:-porkbun-ddns}"
+LOG_HOST="${LOG_HOST:-$(hostname)}"
+LOGGER_BIN="$(command -v logger)"
 
-# log file header
-echo "# Porkbun Dynamic DNS Log: $0" >> "$LOG_FILE"
+append_line() {
+    local raw="$1"
+    local sys_ts
+    sys_ts=$(date '+%b %e %H:%M:%S')
+    printf '%s %s %s[%s]: %s\n' "$sys_ts" "$LOG_HOST" "$LOG_TAG" "$$" "$raw" >>"$LOG_FILE"
+    if [ -n "$LOGGER_BIN" ]; then
+        "$LOGGER_BIN" -t "${LOG_TAG}[$$]" -- "$raw"
+    fi
+}
+
+dd_log() {
+    local label="$1"
+    local ctx="$2"
+    local message="$3"
+    local prefix
+    prefix=$(printf '%-8s ' "${label}:")
+    if [ -n "$ctx" ]; then
+        printf -v line '%s[%s]> %s' "$prefix" "$ctx" "$message"
+    else
+        printf -v line '%s> %s' "$prefix" "$message"
+    fi
+    append_line "$line"
+}
+
+ctx_for() {
+    local record="$1"
+    if [ -n "$record" ]; then
+        printf '%s' "$record"
+    else
+        printf '%s' "$DEFAULT_CTX"
+    fi
+}
 
 # get current IP
 CURRENT_IP=$(curl -s https://api.ipify.org)
 if [ -z "$CURRENT_IP" ]; then
-    echo "$(date): Failed to get current IP" >&2
+    dd_log "FAILED" "$DEFAULT_CTX" "updating ${DEFAULT_CTX}: nohost: unable to resolve current IP"
     exit 1
 fi
 
-{
-echo "$(date): Current IP is $CURRENT_IP"
+dd_log "INFO" "$DEFAULT_CTX" "detected IPv4 address $CURRENT_IP"
 
 # get current DNS records
 records=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/retrieve/$domain" \
@@ -80,28 +113,27 @@ EOF
             -H "Content-Type: application/json" \
             -d "$update_payload")
         if echo "$update_response" | grep -q '"status":"SUCCESS"'; then
-            echo "$(date): Updated A record $record_name from $record_ip to $CURRENT_IP (ID: $record_id)"
+            dd_log "SUCCESS" "$(ctx_for "$record_name")" "updating $record_name: good: IP address set to $CURRENT_IP"
             records_updated=$((records_updated + 1))
         else
-            echo "$(date): Failed to update A record $record_name (ID: $record_id): $update_response"
+            dd_log "FAILED" "$(ctx_for "$record_name")" "updating $record_name: nohost: $update_response"
         fi
     else
-        echo "$(date): A record $record_name already correct at $CURRENT_IP"
+        dd_log "SUCCESS" "$(ctx_for "$record_name")" "skipped: IPv4 address was already set to $CURRENT_IP"
         records_already_correct=$((records_already_correct + 1))
     fi
 done
 
 if [ "$records_updated" -eq 0 ] && [ "$records_already_correct" -gt 0 ]; then
-    echo "$(date): All DNS records already correct"
+    dd_log "INFO" "$DEFAULT_CTX" "all DNS records already correct"
 elif [ "$records_updated" -gt 0 ]; then
-    echo "$(date): Updated $records_updated A record(s)"
+    dd_log "INFO" "$DEFAULT_CTX" "updated $records_updated A record(s)"
 fi
 
-echo "$(date): DNS update completed"
+dd_log "INFO" "$DEFAULT_CTX" "DNS update completed"
 
 # ensure proper ownership of log file
 DATA_DIR_OWNER=$(stat -c '%U:%G' "$data_dir" 2>/dev/null)
 if [ -n "$DATA_DIR_OWNER" ]; then
     chown "$DATA_DIR_OWNER" "$LOG_FILE" 2>/dev/null || true
 fi
-} >> "$LOG_FILE"
