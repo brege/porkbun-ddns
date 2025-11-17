@@ -1,7 +1,7 @@
 porkbun-ddns
 ============
 
-A simple DDNS client for porkbun.com_
+A simple DDNS client for porkbun.com_.
 
     I just want the **A** records for **\*.my-domain.xyz** and **my-domain.xyz** to justwerk™.
 
@@ -33,7 +33,7 @@ Create a config file.
     domain=example.com
     data_dir=/var/lib/porkbun-ddns
 
-Install as a systemd timer to runs at a 5 minute interval and updates the A records on porkbun.com_.
+Install as a systemd timer that runs at a 5 minute interval and updates the A records on porkbun.com_.
 
 .. code-block:: bash
 
